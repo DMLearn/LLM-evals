@@ -1,94 +1,85 @@
-# Building LLM Apps: Evaluation
+# LLM Evaluation & Observability for a RAG Chatbot
 
-## Table of Contents
+> Built on the [Hyperskill starter project](https://github.com/hyperskill-content/LLM-evals) as part of the **AI Engineer Intensive Bootcamp (2026)**.
+> The base chatbot was provided; observability, feedback collection and the evaluation setup are my implementation.
 
-- [Introduction](#introduction)
-- [Learning Outcomes](#learning-outcomes)
-- [Project Structure](#project-structure)
-- [Tasks](#tasks)
-    - [Task One — Introduction and Setup](./tasks/task_1.md)
-    - [Task Two — Tracing and Monitoring](./tasks/task_2.md)
-    - [Task Three — Collecting User Feedback](./tasks/task_3.md)
-    - [Task Four — Annotation](./tasks/task_4.md)
-    - [Task Five — Model-based evaluation](./tasks/task_5.md)
-- [Deliverables](#deliverables)
-- [Useful Resources](#useful-resources)
-- [Contributing](#contributing)
+A smartphone recommendation chatbot (LangChain + Qdrant + tool calling), instrumented end to end so that every answer is **traceable, measurable and reviewable**: from the retrieval step to the final response, including cost, latency, user feedback and LLM-as-a-judge scores.
 
-## **Introduction**
+**Why this matters:** LLM output is non-deterministic. Without traces and evaluation you cannot tell *why* an answer was wrong, *where* in the chain it went wrong, or whether a prompt change made things better or worse.
 
-Generative AI applications have become a part of everyday life. Smart agents, RAG applications, chatbots, and many more are used in virtually every aspect of life. With the capabilities of Generative AI, these apps are now more capable than ever before. Unfortunately, LLMs make mistakes for several reasons—limitations in training data, model constraints, misinterpretation of context, and other factors. These errors manifest as model hallucinations, inconsistent or contradictory answers, irrelevant context, or generic responses.
+---
 
-LLM evaluation comes to the rescue, ensuring we build trustworthy Gen AI apps. Without continuously assessing these applications, you risk your users receiving irrelevant, inaccurate, or hallucinated results. Fortunately, there are tools available to help identify and mitigate these issues.
+## What I implemented
 
-In this project, you’ll work on a chatbot for a smartphone sales website, but the main focus is on evaluating its performance. You'll use tools like Langfuse to collect traces, metrics, and scores, and Ragas to run different model-based assessments. This helps ensure the quality and reliability of the chatbot, especially in how it provides recommendations and comparisons. The metrics we gather will help us improve our app to serve our customers better.
+- **Hierarchical tracing with Langfuse** – `@observe` decorators on the core functions (`embed-documents`, `generate-context`, `ai-response`) combined with the LangChain `CallbackHandler`. Every chain step (`context`, `final-response`, `goodbye-message`) appears as a named span with tokens, cost and latency.
+- **Session & user tracking** – each conversation gets a session ID and user ID, so traces can be grouped and analysed per conversation and per user.
+- **User feedback loop** – at the end of a session the user rates the answer (categorical score `usefulness`) and leaves a comment. Both are attached to the trace via `score_current_trace`.
+- **Human annotation** – annotation queues in the Langfuse UI for expert review of individual traces.
+- **LLM-as-a-judge** – automated evaluators (*Relevance*, *Answer Relevance*) running on the LLM generations in Langfuse.
+- **Local infrastructure** – `docker-compose.yml` for Qdrant; Langfuse self-hosted via its official compose setup.
 
-The full code for the application (built with LangChain) is provided for you. Here is a breakdown of the application’s components:
+## Architecture
 
-1. Interface — for now, it is a console-based application. Users type their queries about smartphones and receive a response.
-2. Knowledge bases —it integrates with a Qdrant vector store containing specifications for various smartphones. You could also use a relational database here.
-3. Retriever component — uses embeddings to index product data for semantic search for the most relevant smartphone model based on the user’s query.
-4. Generative component — generates responses that incorporate retrieved smartphone specifications. We combine user queries and retrieved data to produce contextually relevant answers.
+```
+User (console)
+   │
+   ▼
+context chain ──► LLM with tools ──► SmartphoneInfo tool ──► Qdrant (semantic search)
+   │
+   ▼
+final-response chain ──► LLM ──► answer
+   │
+   ▼
+feedback (usefulness + comment)
 
-This is part one of a series on building production-ready LLM apps. Here, your overall goal is to add monitoring and run various evaluations on this application to ensure it performs as expected. Logs allow you to monitor usage costs, latency, inputs, outputs, and other aspects of the app. You can then use this information to enhance your application over time.
-
-## **Learning Outcomes**
-
-By the end of this project, you'll build a complete evaluation pipeline for an LLM application. You'll gain hands-on experience with evaluation techniques such as analytics, human-as-a-judge, and LLM-as-a-judge. You’ll use tools like Langfuse and Ragas to supercharge LLM evaluation. This project will help you ensure that your LLM-powered app offers accurate recommendations and consistently meets high-performance and reliability standards.
-
-## **Project Structure**
-
-Here are the main directories and files in this repo:
-
-```markdown
-├── images/
-│   ├── langfuse_scores_annotation.png
-│   ├── feedback_scores_in_ui.png
-│   ├── trace_details.png
-│   ├── eval_scores.png
-│   ├── setting_up_an_evaluator.png
-│   ├── variable_mapping.png
-│   └── traces.png
-├── tasks/
-│   ├── task_1.md
-│   ├── task_2.md
-│   ├── task_3.md
-│   ├── task_4.md
-│   └── task_5.md
-├── datasets/
-│   ├── smartphones.json
-├── .env.sample
-├── .gitignore
-├── main.py
-├── README.md
-└── requirements.txt
+All steps ──► Langfuse: traces · tokens · cost · latency · scores · annotations · LLM-as-a-judge
 ```
 
-## **Tasks**
+## Results
 
-The project is divided into various tasks that you need to complete. The tasks are located in the [tasks](./tasks) folder of the repository. Each task includes all the necessary objectives, suggested development steps, deliverables, and useful resources. Here's a brief overview of each task:
+| Trace with nested spans, token usage and cost | LLM-as-a-judge scores per generation |
+|---|---|
+| ![Trace](learnings/task2.png) | ![Evaluation](learnings/task5.png) |
 
-- **Task One — Introduction and Setup:** Set up Langfuse, Qdrant vector store, and API keys for the project.
-- **Task Two — Monitoring:** Collect logs and metrics via Langfuse to understand how the application is performing.
-- **Task Three — User feedback**: Collect user feedback to understand how your application is performing.
-- **Task Four  — Annotation**: Use the Langfuse UI to annotate traces. Useful for expert evaluation of your LLM application.
-- **Task Five — Model-based evaluation**: Use Ragas to run model-based evaluation.
+| User feedback score | Human annotation |
+|---|---|
+| ![Feedback](learnings/task3.png) | ![Annotation](learnings/task4.png) |
 
-## **Useful Resources**
+**Key takeaways** (details in [learnings/learnings.md](learnings/learnings.md)):
+- Decorator-based tracing gives a quick overview; passing the Langfuse config into each chain invocation adds the depth that matters (tool calls, tokens, per-step cost).
+- Evaluation works best in layers: **manual annotation** with domain experts early on, **LLM-as-a-judge** once traffic scales, and **direct user feedback** throughout.
+- Traces can be exported and analysed by script – a basis for standardised checks in a CI/CD pipeline.
 
-Each task contains a collection of resources that will be helpful for you as you solve the task. There are links to topics in Hyperskill, documentation, and other helpful tutorials that you can use. You may not always need to use all the provided resources if you're already familiar with the concepts. In addition to the provided resources, you can always discuss with others and experts. You can use various channels — GitHub Issues, GitHub Discussions, PRs, or Discord.
+## Tech stack
 
-## Deliverables
+Python · LangChain · OpenAI API · Qdrant · Langfuse (SDK v3, self-hosted) · Docker
 
-Each task contains a set of deliverables that bring you close to achieving the final goal. The final product is a fully-monitored LLM application. You should see traces and evaluation results in Langfuse.
+## Run it
 
-## **The Flow**
+```bash
+# 1. Start Qdrant
+docker compose up -d
 
-Fork → Clone → Branch → Implement → PR → Review
+# 2. Start Langfuse (self-hosted) – see https://langfuse.com/self-hosting
+git clone https://github.com/langfuse/langfuse.git && cd langfuse && docker compose up -d && cd ..
 
-- Fork this repo to your own GitHub account.
-- Create a new branch for each task (ensure to use descriptive names) if applicable (if there is any code that has to be implemented).
-- Implement the solution based on the task descriptions.
-- Push the branch to the forked repo.
-- Create a Pull Request from the fork back to the main repo.
-- We will review the PR and provide feedback through GitHub.
+# 3. Configure and run
+cp .env.sample .env      # add OpenAI and Langfuse keys
+pip install -r requirements.txt
+python main.py
+```
+
+---
+
+<details>
+<summary>Original task description (Hyperskill)</summary>
+
+The project is structured into five tasks, see the [tasks](./tasks) folder:
+
+1. **Introduction and Setup** – Langfuse, Qdrant and API keys
+2. **Tracing and Monitoring** – collect logs and metrics via Langfuse
+3. **Collecting User Feedback**
+4. **Annotation** – annotate traces in the Langfuse UI
+5. **Model-based evaluation** – LLM-as-a-judge
+
+</details>
